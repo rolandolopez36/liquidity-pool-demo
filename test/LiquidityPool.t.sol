@@ -2,19 +2,19 @@
 pragma solidity ^0.8.20;
 
 /*──────────────────────── IMPORTS ────────────────────────*/
-// forge-std/Test.sol => biblioteca de Foundry que expone utilidades
-// de test y los “cheatcodes” accesibles a través de la variable global `vm`.
+// forge-std/Test.sol ⇒ Foundry’s library that exposes testing utilities
+// and the “cheatcodes” available through the global `vm` variable.
 import "forge-std/Test.sol";
 import "../src/LiquidityPool.sol";
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
-/*──────────────────── TOKEN DE PRUEBA ────────────────────*/
+/*──────────────────── TEST TOKEN ────────────────────*/
 /**
  * @title  TestToken
- * @notice ERC-20 mínimo pensado solo para el entorno de pruebas.
- *         — El constructor define nombre y símbolo.
- *         — La función `mint()` permite acuñar tokens sin restricción
- *           (no habría que usarla así en producción).
+ * @notice Minimal ERC-20 meant only for the testing environment.
+ *         — The constructor sets the name and symbol.
+ *         — The `mint()` function allows unrestricted minting
+ *           (should NOT be used like this in production).
  */
 contract TestToken is ERC20 {
     constructor(
@@ -22,35 +22,35 @@ contract TestToken is ERC20 {
         string memory symbol_
     ) ERC20(name_, symbol_) {}
 
-    /// @dev Acuña `amount` tokens al destinatario `to`.
+    /// @dev Mints `amount` tokens to the recipient `to`.
     function mint(address to, uint256 amount) external {
         _mint(to, amount);
     }
 }
 
-/*────────────────── SUITE DE PRUEBAS ───────────────────*/
+/*────────────────── TEST SUITE ──────────────────*/
 /**
  * @title  LiquidityPoolTest
- * @notice Conjunto unitario para verificar las funciones públicas de
- *         `LiquidityPool`.  Hereda de `Test`, que nos da acceso a:
- *         - `assertEq`, `expectRevert`, etc.    (aserciones)
- *         - `vm` (cheatcodes) para manipular el EVM durante los tests
+ * @notice Unit-test set to verify the public functions of `LiquidityPool`.
+ *         Inherits from `Test`, giving access to:
+ *         - `assertEq`, `expectRevert`, etc.     (assertions)
+ *         - `vm` (cheatcodes) to manipulate the EVM during tests
  *           (pranks, deals, warps, fork, etc.).
  */
 contract LiquidityPoolTest is Test {
-    /*──────────── VARIABLES DE ESTADO (FIXTURE) ───────────*/
-    TestToken token0; // Primer token del par
-    TestToken token1; // Segundo token del par
-    LiquidityPool pool; // AMM que vamos a testear
+    /*──────────── STATE VARIABLES (FIXTURE) ───────────*/
+    TestToken token0; // First token of the pair
+    TestToken token1; // Second token of the pair
+    LiquidityPool pool; // AMM under test
 
-    // Direcciones ficticias; facilitan la lectura de los trace logs.
+    // Dummy addresses; make the trace logs easier to read.
     address constant ALICE = address(0xA11CE);
     address constant BOB = address(0xB0B);
 
-    /*───────────── UTILIDAD: sqrt() ─────────────*/
-    /// @dev Versión interna de la raíz cuadrada entera: la usamos para
-    ///      calcular el valor de referencia que esperamos de la primera
-    ///      provisión de liquidez (LP = √(a0·a1)).
+    /*───────────── UTILITY: sqrt() ─────────────*/
+    /// @dev Internal integer square root: used to compute the reference
+    ///      value we expect from the first liquidity provision
+    ///      (LP = √(a0·a1)).
     function _sqrt(uint256 y) internal pure returns (uint256 z) {
         if (y > 3) {
             z = y;
@@ -64,42 +64,42 @@ contract LiquidityPoolTest is Test {
         }
     }
 
-    /*───────────── FIXTURE GLOBAL ─────────────*/
+    /*───────────── GLOBAL FIXTURE ─────────────*/
     /**
-     * @notice setUp() se ejecuta antes de **cada** test.
-     *         Prepara la red local con:
-     *         1. Dos tokens ERC-20 frescos.
-     *         2. Un contrato LiquidityPool desplegado.
-     *         3. Saldos iniciales (1 000 000 tokens) para Alice y Bob.
-     *         4. Aprobaciones infinitas de ambos hacia el pool.
+     * @notice setUp() runs before **each** test.
+     *         It prepares the local chain with:
+     *         1. Two fresh ERC-20 tokens.
+     *         2. A deployed LiquidityPool contract.
+     *         3. Initial balances (1 000 000 tokens) for Alice and Bob.
+     *         4. Infinite approvals from both toward the pool.
      *
-     *         Cheatcodes utilizados:
-     *         - `vm.startPrank(addr)`   ⇒ todas las tx siguientes se firman
-     *                                    como `addr` hasta `vm.stopPrank()`.
-     *         - `vm.stopPrank()`        ⇒ finaliza el “impersonation”.
+     *         Cheatcodes used:
+     *         - `vm.startPrank(addr)`   ⇒ all subsequent txs are signed
+     *                                    as `addr` until `vm.stopPrank()`.
+     *         - `vm.stopPrank()`        ⇒ ends the impersonation.
      */
     function setUp() public {
-        // 1) Despliegue de tokens
+        // 1) Deploy tokens
         token0 = new TestToken("Token0", "TK0");
         token1 = new TestToken("Token1", "TK1");
 
-        // 2) Despliegue del pool con los dos tokens
+        // 2) Deploy the pool with the two tokens
         pool = new LiquidityPool(address(token0), address(token1));
 
-        // 3) Acuñar balances grandes para los actores
-        uint256 BIG = 1_000_000 ether; // 1 millón de tokens
+        // 3) Mint large balances for the actors
+        uint256 BIG = 1_000_000 ether; // 1 million tokens
         token0.mint(ALICE, BIG);
         token1.mint(ALICE, BIG);
         token0.mint(BOB, BIG);
         token1.mint(BOB, BIG);
 
-        // 4) Alice firma aprobaciones => el pool podrá mover sus tokens
+        // 4) Alice signs approvals ⇒ the pool may move her tokens
         vm.startPrank(ALICE);
         token0.approve(address(pool), type(uint256).max);
         token1.approve(address(pool), type(uint256).max);
         vm.stopPrank();
 
-        //    Bob hace lo mismo
+        //    Bob does the same
         vm.startPrank(BOB);
         token0.approve(address(pool), type(uint256).max);
         token1.approve(address(pool), type(uint256).max);
@@ -108,29 +108,29 @@ contract LiquidityPoolTest is Test {
 
     /*─────────────────── TEST 1 ───────────────────*/
     /**
-     * @dev Verifica que la **primera** provisión de liquidez acuñe
-     *      exactamente √(a0·a1) LP-tokens y los asigne al proveedor.
-     *      Pasos:
-     *      1. Alice añade 1 000 TK0 + 4 000 TK1.
-     *      2. Comparamos:
-     *         - LP emitidos vs valor teórico.
-     *         - totalSupply del LP-token.
-     *         - balance LP de Alice.
+     * @dev Verifies that the **first** liquidity provision mints
+     *      exactly √(a0·a1) LP-tokens and assigns them to the provider.
+     *      Steps:
+     *      1. Alice adds 1 000 TK0 + 4 000 TK1.
+     *      2. Compare:
+     *         - LP issued vs. theoretical value.
+     *         - LP-token totalSupply.
+     *         - Alice’s LP balance.
      *
      * Cheatcodes:
-     * - `vm.prank(ALICE)` ⇒ la próxima llamada se firma como Alice.
+     * - `vm.prank(ALICE)` ⇒ the next call is signed as Alice.
      *
-     * Aserciones (`assertEq`):
-     * - Comprueban igualdad estricta; si falla, revert con mensaje.
+     * Assertions (`assertEq`):
+     * - Strict equality; revert with message if it fails.
      */
     function testInitialLiquidityMintsSqrt() public {
         uint256 amt0 = 1_000 ether;
         uint256 amt1 = 4_000 ether;
 
-        vm.prank(ALICE); // siguiente tx ≡ Alice
-        uint256 lpMinted = pool.addLiquidity(amt0, amt1); // acción bajo test
+        vm.prank(ALICE); // next tx ≡ Alice
+        uint256 lpMinted = pool.addLiquidity(amt0, amt1); // action under test
 
-        uint256 expected = _sqrt(amt0 * amt1); // valor teórico
+        uint256 expected = _sqrt(amt0 * amt1); // theoretical value
         assertEq(lpMinted, expected, "Incorrect LP mint");
         assertEq(pool.totalSupply(), expected, "Unexpected totalSupply");
         assertEq(pool.balanceOf(ALICE), expected, "Wrong Alice LP balance");
@@ -138,19 +138,19 @@ contract LiquidityPoolTest is Test {
 
     /*─────────────────── TEST 2 ───────────────────*/
     /**
-     * @dev Comprueba que añadir liquidez en la **misma proporción**
-     *      no cambie el precio y emita LP-tokens linealmente.
-     *      1. Alice crea pool 1 000/1 000.
-     *      2. Guardamos supply antes.
-     *      3. Bob añade 500/500 ⇒ esperamos +500 LP.
+     * @dev Checks that adding liquidity in the **same ratio**
+     *      does not change the price and mints LP-tokens linearly.
+     *      1. Alice creates pool 1 000/1 000.
+     *      2. Store supply before.
+     *      3. Bob adds 500/500 ⇒ expect +500 LP.
      */
     function testAddLiquidityKeepsRatio() public {
         vm.prank(ALICE);
-        pool.addLiquidity(1_000 ether, 1_000 ether); // estado base
+        pool.addLiquidity(1_000 ether, 1_000 ether); // base state
         uint256 supplyBefore = pool.totalSupply();
 
         vm.prank(BOB);
-        pool.addLiquidity(500 ether, 500 ether); // misma proporción
+        pool.addLiquidity(500 ether, 500 ether); // same ratio
         uint256 supplyAfter = pool.totalSupply();
 
         assertEq(supplyAfter, supplyBefore + 500 ether, "Unexpected LP mint");
@@ -158,26 +158,26 @@ contract LiquidityPoolTest is Test {
 
     /*─────────────────── TEST 3 ───────────────────*/
     /**
-     * @dev Verifica que `removeLiquidity`:
-     *      - Quema la cantidad correcta de LP-tokens.
-     *      - Devuelve los tokens subyacentes proporcionales.
-     *      - Actualiza las reservas del pool.
+     * @dev Verifies that `removeLiquidity`:
+     *      - Burns the correct amount of LP-tokens.
+     *      - Returns the proportional underlying tokens.
+     *      - Updates the pool’s reserves.
      *
-     * Pasos:
-     *  1. Alice añade 1 000/1 000.
-     *  2. Guarda su balance LP.
-     *  3. Retira la mitad (lp/2) ⇒ deberían quedar 500/500 en el pool.
+     * Steps:
+     *  1. Alice adds 1 000/1 000.
+     *  2. Store her LP balance.
+     *  3. Withdraw half (lp/2) ⇒ pool should hold 500/500.
      */
     function testRemoveLiquidityReturnsAssets() public {
         vm.prank(ALICE);
         pool.addLiquidity(1_000 ether, 1_000 ether);
 
-        uint256 lpAlice = pool.balanceOf(ALICE); // LP emitidos
+        uint256 lpAlice = pool.balanceOf(ALICE); // LP issued
 
         vm.prank(ALICE);
-        pool.removeLiquidity(lpAlice / 2); // retira el 50 %
+        pool.removeLiquidity(lpAlice / 2); // withdraw 50 %
 
-        // ─── Aserciones ───
+        // ─── Assertions ───
         assertEq(pool.balanceOf(ALICE), lpAlice / 2, "Remaining LP incorrect");
         assertEq(
             token0.balanceOf(address(pool)),
@@ -193,13 +193,13 @@ contract LiquidityPoolTest is Test {
 
     /*─────────────────── TEST 4 ───────────────────*/
     /**
-     * @dev Testea la función `swap`:
-     *      1. Se crea pool simétrico 1 000/1 000.
-     *      2. Bob envía 100 TK0 y pide 90 TK1 (resultado esperado).
-     *      3. Confirmamos que Bob recibe 90 TK1 adicionales.
+     * @dev Tests the `swap` function:
+     *      1. A symmetric pool 1 000/1 000 is created.
+     *      2. Bob sends 100 TK0 and asks for 90 TK1 (expected result).
+     *      3. Confirm Bob receives an extra 90 TK1.
      *
      * Cheatcodes:
-     *  - `vm.startPrank(BOB)` / `vm.stopPrank()` ⇒ varias tx seguidas como Bob.
+     *  - `vm.startPrank(BOB)` / `vm.stopPrank()` ⇒ multiple txs in a row as Bob.
      */
     function testSwapToken0ForToken1() public {
         vm.prank(ALICE);
@@ -207,9 +207,9 @@ contract LiquidityPoolTest is Test {
 
         uint256 bobTk1Before = token1.balanceOf(BOB);
 
-        vm.startPrank(BOB); // bloque de tx como Bob
-        token0.transfer(address(pool), 100 ether); // aporta input
-        pool.swap(0, 90 ether, BOB); // recibe output
+        vm.startPrank(BOB); // tx block as Bob
+        token0.transfer(address(pool), 100 ether); // input
+        pool.swap(0, 90 ether, BOB); // output
         vm.stopPrank();
 
         assertEq(
@@ -221,15 +221,15 @@ contract LiquidityPoolTest is Test {
 
     /*─────────────────── TEST 5 ───────────────────*/
     /**
-     * @dev Asegura que `swap` revierte si ambos parámetros de salida son cero.
-     *      Utilizamos `vm.expectRevert("zero-out")` para anticipar el revert exacto.
+     * @dev Ensures that `swap` reverts if both output parameters are zero.
+     *      We use `vm.expectRevert("zero-out")` to anticipate the exact revert.
      */
     function testSwapRevertsZeroOut() public {
         vm.prank(ALICE);
         pool.addLiquidity(1_000 ether, 1_000 ether);
 
-        vm.expectRevert("zero-out"); // esperamos revert
+        vm.expectRevert("zero-out"); // expect revert
         vm.prank(BOB);
-        pool.swap(0, 0, BOB); // call que debe fallar
+        pool.swap(0, 0, BOB); // call that must fail
     }
 }
