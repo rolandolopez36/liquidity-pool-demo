@@ -343,4 +343,77 @@ contract LiquidityPoolTest is Test {
         uint256 lp = pool.addLiquidity(1, 1); // 1 wei each token
         assertEq(lp, 1, "LP should be 1 wei");
     }
+
+    /*─────────────────── EXTRA NEGATIVE / MIXED-PATH TESTS ───────────────────*/
+
+    /**
+     * @dev removeLiquidity must revert with “low” when either a0 or a1
+     *      rounds down to zero.  We force that situation by:
+     *      1. Creating a 1 000 / 1 000 pool.  → supply = 1 000 LP.
+     *      2. Bob drains most of TK0 (990 out) supplying a huge amount of TK1
+     *         so the invariant still holds.  Reserves become 10 / 101 000.
+     *      3. Alice tries to burn 1 wei of LP.  a0 = floor(1 * 10 / 1 000) = 0,
+     *         a1 > 0 → `require` should revert with "low".
+     */
+    function testRemoveLiquidityRevertsLow() public {
+        /* 1. Pool bootstrap */
+        vm.prank(ALICE);
+        pool.addLiquidity(1_000 ether, 1_000 ether);
+
+        /* 2. Massive TK1–in / TK0–out swap to shrink reserve0 */
+        vm.startPrank(BOB);
+        token1.transfer(address(pool), 100_000 ether); // pay big TK1 in
+        pool.swap(990 ether, 0, BOB); // take 990 TK0 out
+        vm.stopPrank();
+        // Reserves ≈ 10 TK0  + 101 000 TK1
+
+        /* 3. Burn a single wei of LP → expect "low" revert */
+        vm.prank(ALICE);
+        vm.expectRevert(bytes("low"));
+        pool.removeLiquidity(1); // 1 wei of LP
+    }
+
+    /**
+     * @dev Happy-path swap where **only token0 is withdrawn** and Bob pays with
+     *      token1.  Covers the execution branch where `a0Out > 0` **and**
+     *      `a1Out == 0` (the `if (a1Out > 0)` branch is skipped).
+     *
+     * Steps:
+     *  1. Pool reserves start at 1 000 / 1 000.
+     *  2. Bob transfers 100 TK1 in, then calls `swap(10, 0, BOB)` to receive
+     *     10 TK0 out.  The chosen numbers satisfy the fee-adjusted invariant.
+     *  3. Assertions:
+     *     - Bob gains exactly 10 TK0.
+     *     - Pool’s TK0 reserve decreases by 10.
+     *     - Pool’s TK1 reserve increases by 100 (less the 0.3 % fee).
+     */
+    function testSwapToken1InForToken0Out() public {
+        vm.prank(ALICE);
+        pool.addLiquidity(1_000 ether, 1_000 ether); // baseline reserves
+
+        uint256 bobTk0Before = token0.balanceOf(BOB);
+
+        vm.startPrank(BOB);
+        token1.transfer(address(pool), 100 ether); // pay 100 TK1 in
+        pool.swap(10 ether, 0, BOB); // withdraw 10 TK0
+        vm.stopPrank();
+
+        // ─── Post-conditions ───
+        assertEq(
+            token0.balanceOf(BOB),
+            bobTk0Before + 10 ether,
+            "Bob did not receive 10 TK0"
+        );
+        assertEq(
+            token0.balanceOf(address(pool)),
+            990 ether,
+            "Pool TK0 reserve incorrect"
+        );
+        // TK1 reserve should now be 1 100 − fee (≈ 1 099.7); we only check > 1 099 to allow rounding.
+        assertGt(
+            token1.balanceOf(address(pool)),
+            1_099 ether,
+            "Pool TK1 reserve too low"
+        );
+    }
 }
