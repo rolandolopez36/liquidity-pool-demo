@@ -232,4 +232,115 @@ contract LiquidityPoolTest is Test {
         vm.prank(BOB);
         pool.swap(0, 0, BOB); // call that must fail
     }
+
+    /*─────────────────── NEW NEGATIVE-PATH TESTS ──────────────────*/
+
+    /**
+     * @dev Ensures the constructor reverts when both token addresses are identical.
+     *
+     * Steps:
+     *  1. We do not deploy a pool in `setUp()` here; we attempt to deploy a new
+     *     LiquidityPool passing the *same* address twice.
+     *
+     * Cheatcodes:
+     *  - `vm.expectRevert(bytes("identical"))` → instructs the test runner to
+     *    expect a revert whose reason string is exactly "identical".
+     *
+     * Assertion:
+     *  - The test passes automatically if the revert matches; otherwise it fails.
+     */
+    function testConstructorRevertsIdenticalTokens() public {
+        vm.expectRevert(bytes("identical"));
+        new LiquidityPool(address(token0), address(token0));
+    }
+
+    /**
+     * @dev Verifies that `addLiquidity` reverts with “no LP” when the calculated
+     *      share (`lp`) is zero (extremely unbalanced ratio).
+     *
+     * Scenario:
+     *  1. A valid pool with 1 000/1 000 is created (base state).
+     *  2. Bob tries to deposit **1 TK0 / 0 TK1** — ratio is off, lp = 0.
+     *
+     * Cheatcodes:
+     *  - `vm.prank(ALICE)` / `vm.prank(BOB)` to sign calls as the actors.
+     *  - `vm.expectRevert(bytes("no LP"))` to capture the revert.
+     */
+    function testAddLiquidityRevertsNoLP() public {
+        vm.prank(ALICE);
+        pool.addLiquidity(1_000 ether, 1_000 ether); // initial liquidity
+
+        vm.prank(BOB);
+        vm.expectRevert(bytes("no LP"));
+        pool.addLiquidity(1 ether, 0); // lp would be zero
+    }
+
+    /**
+     * @dev Checks that `swap` reverts with “no liq” when the requested output
+     *      exceeds the pool’s reserves.
+     *
+     * Steps:
+     *  1. Pool reserves: 100 / 100.
+     *  2. Bob asks for 101 TK0 out — more than is available.
+     */
+    function testSwapRevertsNoLiquidity() public {
+        vm.prank(ALICE);
+        pool.addLiquidity(100 ether, 100 ether);
+
+        vm.prank(BOB);
+        vm.expectRevert(bytes("no liq"));
+        pool.swap(101 ether, 0, BOB); // a0Out > reserve0
+    }
+
+    /**
+     * @dev Ensures `swap` reverts with “no in” when no token input is provided
+     *      (caller tries to take out value for free).
+     *
+     * Flow:
+     *  1. Pool has 100 / 100.
+     *  2. Bob provides **0** input but requests 1 TK1 out.
+     */
+    function testSwapRevertsNoInput() public {
+        vm.prank(ALICE);
+        pool.addLiquidity(100 ether, 100 ether);
+
+        vm.prank(BOB);
+        vm.expectRevert(bytes("no in"));
+        pool.swap(0, 1 ether, BOB); // asks output w/ no input
+    }
+
+    /**
+     * @dev Validates that `swap` reverts with “k” when the constant-product
+     *      invariant would be broken.
+     *
+     * Procedure:
+     *  1. Pool reserves start at 1 000 / 1 000.
+     *  2. Bob sends only 1 TK0 in but tries to withdraw 990 TK1 out → violates k.
+     *
+     * Cheatcodes:
+     *  - `vm.startPrank` / `vm.stopPrank` for multiple calls as Bob.
+     */
+    function testSwapRevertsInvariantK() public {
+        vm.prank(ALICE);
+        pool.addLiquidity(1_000 ether, 1_000 ether);
+
+        vm.startPrank(BOB);
+        token0.transfer(address(pool), 1 ether); // tiny input
+        vm.expectRevert(bytes("k"));
+        pool.swap(0, 990 ether, BOB); // breaks invariant
+        vm.stopPrank();
+    }
+
+    /**
+     * @dev Confirms that *tiny* symmetric deposits trigger the `sqrt` branch and
+     *      mint exactly 1 wei of LP-token.
+     *
+     * Expectations:
+     *  - For (1 wei, 1 wei) the geometric mean √(1·1) equals 1, so lp = 1.
+     */
+    function testAddLiquidityTinyAmountsMintsOneLP() public {
+        vm.prank(ALICE);
+        uint256 lp = pool.addLiquidity(1, 1); // 1 wei each token
+        assertEq(lp, 1, "LP should be 1 wei");
+    }
 }
