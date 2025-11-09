@@ -28,6 +28,21 @@ contract TestToken is ERC20 {
     }
 }
 
+/*──────────────────── SQRT HELPER ────────────────────*/
+/**
+ * @title  SqrtHelper
+ * @notice Helper contract to expose the internal _sqrt function from
+ *         LiquidityPool for testing purposes. This eliminates code duplication.
+ */
+contract SqrtHelper is LiquidityPool {
+    constructor() LiquidityPool(address(1), address(2)) {}
+    
+    /// @dev Exposes the internal _sqrt function for use in tests
+    function sqrt(uint256 y) external pure returns (uint256) {
+        return _sqrt(y);
+    }
+}
+
 /*────────────────── TEST SUITE ──────────────────*/
 /**
  * @title  LiquidityPoolTest
@@ -42,27 +57,12 @@ contract LiquidityPoolTest is Test {
     TestToken token0; // First token of the pair
     TestToken token1; // Second token of the pair
     LiquidityPool pool; // AMM under test
+    SqrtHelper sqrtHelper; // Helper to access sqrt function
 
     // Dummy addresses; make the trace logs easier to read.
     address constant ALICE = address(0xA11CE);
     address constant BOB = address(0xB0B);
 
-    /*───────────── UTILITY: sqrt() ─────────────*/
-    /// @dev Internal integer square root: used to compute the reference
-    ///      value we expect from the first liquidity provision
-    ///      (LP = √(a0·a1)).
-    function _sqrt(uint256 y) internal pure returns (uint256 z) {
-        if (y > 3) {
-            z = y;
-            uint256 x = y / 2 + 1;
-            while (x < z) {
-                z = x;
-                x = (y / x + x) / 2;
-            }
-        } else if (y != 0) {
-            z = 1;
-        }
-    }
 
     /*───────────── GLOBAL FIXTURE ─────────────*/
     /**
@@ -85,15 +85,18 @@ contract LiquidityPoolTest is Test {
 
         // 2) Deploy the pool with the two tokens
         pool = new LiquidityPool(address(token0), address(token1));
+        
+        // 3) Deploy sqrt helper
+        sqrtHelper = new SqrtHelper();
 
-        // 3) Mint large balances for the actors
+        // 4) Mint large balances for the actors
         uint256 BIG = 1_000_000 ether; // 1 million tokens
         token0.mint(ALICE, BIG);
         token1.mint(ALICE, BIG);
         token0.mint(BOB, BIG);
         token1.mint(BOB, BIG);
 
-        // 4) Alice signs approvals ⇒ the pool may move her tokens
+        // 5) Alice signs approvals ⇒ the pool may move her tokens
         vm.startPrank(ALICE);
         token0.approve(address(pool), type(uint256).max);
         token1.approve(address(pool), type(uint256).max);
@@ -130,7 +133,7 @@ contract LiquidityPoolTest is Test {
         vm.prank(ALICE); // next tx ≡ Alice
         uint256 lpMinted = pool.addLiquidity(amt0, amt1); // action under test
 
-        uint256 expected = _sqrt(amt0 * amt1); // theoretical value
+        uint256 expected = sqrtHelper.sqrt(amt0 * amt1); // theoretical value
         assertEq(lpMinted, expected, "Incorrect LP mint");
         assertEq(pool.totalSupply(), expected, "Unexpected totalSupply");
         assertEq(pool.balanceOf(ALICE), expected, "Wrong Alice LP balance");
