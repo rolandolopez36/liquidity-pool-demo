@@ -164,7 +164,7 @@ contract LiquidityPool is ERC20Burnable {
 
     /// @dev Integer square root using the Babylonian method.
     ///      Used for the first liquidity provision (lp = √(a0·a1)).
-    function _sqrt(uint y) private pure returns (uint z) {
+    function _sqrt(uint y) internal pure returns (uint z) {
         unchecked {
             if (y > 3) {
                 z = y;
