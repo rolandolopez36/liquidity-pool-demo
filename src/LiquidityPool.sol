@@ -80,10 +80,8 @@ contract LiquidityPool is ERC20Burnable {
         require(lp > 0, "no LP");
 
         _mint(msg.sender, lp); // deliver LP-tokens
-        _update(
-            token0.balanceOf(address(this)),
-            token1.balanceOf(address(this))
-        ); // sync reserves
+        (uint b0, uint b1) = _getBalances();
+        _update(b0, b1); // sync reserves
     }
 
     /// @notice Removes liquidity by burning LP-tokens and returning the
@@ -93,8 +91,7 @@ contract LiquidityPool is ERC20Burnable {
     /// @return a1 Amount of `token1` withdrawn.
     function removeLiquidity(uint lp) external returns (uint a0, uint a1) {
         uint supply = totalSupply();
-        uint b0 = token0.balanceOf(address(this));
-        uint b1 = token1.balanceOf(address(this));
+        (uint b0, uint b1) = _getBalances();
 
         // Exact proportion to withdraw.
         a0 = (lp * b0) / supply;
@@ -107,10 +104,8 @@ contract LiquidityPool is ERC20Burnable {
         token0.transfer(msg.sender, a0);
         token1.transfer(msg.sender, a1);
 
-        _update(
-            token0.balanceOf(address(this)),
-            token1.balanceOf(address(this))
-        );
+        (b0, b1) = _getBalances();
+        _update(b0, b1);
     }
 
     /*──────────────────────────────  Swap  ───────────────────────────────*/
@@ -129,8 +124,7 @@ contract LiquidityPool is ERC20Burnable {
         if (a1Out > 0) token1.transfer(to, a1Out);
 
         // Post-transfer balance.
-        uint b0 = token0.balanceOf(address(this));
-        uint b1 = token1.balanceOf(address(this));
+        (uint b0, uint b1) = _getBalances();
 
         // Calculate effective inputs (lazy evaluation).
         uint a0In = b0 > reserve0 - a0Out ? b0 - (reserve0 - a0Out) : 0;
@@ -154,6 +148,14 @@ contract LiquidityPool is ERC20Burnable {
     }
 
     /*──────────────────  Internal functions / Utils  ───────────────────*/
+
+    /// @dev Returns the current balances of both tokens held by this contract.
+    /// @return b0 Balance of token0.
+    /// @return b1 Balance of token1.
+    function _getBalances() private view returns (uint b0, uint b1) {
+        b0 = token0.balanceOf(address(this));
+        b1 = token1.balanceOf(address(this));
+    }
 
     /// @dev Updates the reserves and emits `Sync`.
     function _update(uint b0, uint b1) private {
